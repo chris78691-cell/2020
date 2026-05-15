@@ -1,0 +1,34 @@
+# --- node / vite ---
+node_modules/
+dist/
+build/
+.vite/
+*.local
+
+# --- env files ---
+.env
+.env.local
+.env.*.local
+
+# --- OS junk ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- editor / IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- logs ---
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- claude / preview tooling (local only) ---
+.claude/launch.json
+
+# --- misc loose files in project root that aren't part of the site ---
+polar audio.MP3
