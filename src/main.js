@@ -24,19 +24,22 @@ const portalOverlay = document.getElementById('portal-overlay');
 // Touch / portrait detection — coarse pointers + narrow viewports get mobile treatment.
 const isCoarsePointer = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
 const isMobileViewport = () => window.innerWidth < 720 || isCoarsePointer;
+// Frozen at startup so all the renderer/composer setup uses the same answer
+// (re-evaluating it per-tick or on resize would mean reshaping the pass list).
+const IS_MOBILE = isMobileViewport();
 
-// Bump pixel ratio on phones — they have high-DPI screens and crisp text matters more
-// than the slight extra GPU cost; desktop stays capped at 1.5 to keep the post chain cheap.
+// Pixel ratio: mobile GPUs can't afford the 4× shader work of dpr=2 through a
+// full post chain. 1.25 keeps text legible without killing framerate.
 function getTargetPixelRatio() {
   const dpr = window.devicePixelRatio || 1;
-  return Math.min(dpr, isMobileViewport() ? 2.0 : 1.5);
+  return Math.min(dpr, IS_MOBILE ? 1.25 : 1.5);
 }
 
-// Wider vertical FOV on portrait viewports so the tunnel doesn't feel cramped
-// when the horizontal aspect is narrow.
+// Slightly narrower FOV on portrait than the original 88° pass — still wider
+// than desktop but less overdraw to fill.
 function getTargetFov() {
   const aspect = window.innerWidth / window.innerHeight;
-  return aspect < 1 ? 88 : (aspect < 1.4 ? 80 : 75);
+  return aspect < 1 ? 82 : (aspect < 1.4 ? 78 : 75);
 }
 
 // ---------------- Renderer ----------------
@@ -149,12 +152,16 @@ composer.addPass(new RenderPass(scene, camera));
 const chromaPass = new ShaderPass(ChromaticAberrationShader);
 composer.addPass(chromaPass);
 
+// Mobile: keep the chromatic-aberration signature but drop the film + glitch
+// passes — each saved pass is one fewer full-screen quad render per frame,
+// which is the biggest GPU win on phones.
 const filmPass = new FilmPass(0.25, false);
-composer.addPass(filmPass);
-
 const glitchPass = new GlitchPass();
 glitchPass.enabled = false;
-composer.addPass(glitchPass);
+if (!IS_MOBILE) {
+  composer.addPass(filmPass);
+  composer.addPass(glitchPass);
+}
 
 composer.addPass(new OutputPass());
 
@@ -277,6 +284,7 @@ skipBtn.addEventListener('click', () => {
 });
 
 function triggerGlitchBurst() {
+  if (IS_MOBILE) return; // glitchPass isn't in the composer chain on mobile
   glitchPass.enabled = true;
   glitchPass.goWild = Math.random() < 0.25;
   const dur = 140 + Math.random() * 260;
