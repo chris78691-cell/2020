@@ -269,22 +269,29 @@ export function attachMedia(planes, loader) {
           }
         }
 
-        // Perf: only play videos that are close enough AND in the right direction.
-        // Forward = -Z; "ahead" means plane.z <= camera.z. Behind-camera videos
-        // pause aggressively on mobile because the user can't look back.
-        // One-shots are explicitly started/replayed elsewhere — never auto-resume them.
-        if (it.video && camera) {
-          const dist = it.plane.position.distanceTo(camera.position);
-          const ahead = it.plane.position.z <= camera.position.z;
-          const range = mobileMode
-            ? (ahead ? RANGE_MOBILE_AHEAD  : RANGE_MOBILE_BEHIND)
-            : (ahead ? RANGE_DESKTOP_AHEAD : RANGE_DESKTOP_BEHIND);
-          if (dist > range) {
-            if (!it.video.paused) it.video.pause();
-          } else if (!it.oneShot) {
-            if (it.video.paused) {
-              const p = it.video.play();
-              if (p && p.catch) p.catch(() => {});
+      }
+
+      // Per-video play/pause selection. Desktop: each video manages itself
+      // against the per-direction range. Mobile: at most ONE looping video
+      // decodes at a time (the closest in range), because mobile browsers
+      // only have a couple of hardware decoder slots and swapping them
+      // every frame is what causes the audio dropouts after a few screens.
+      if (camera) {
+        if (mobileMode) {
+          updateMobileVideoSelection(items, camera);
+        } else {
+          for (const it of items) {
+            if (!it.video) continue;
+            const dist = it.plane.position.distanceTo(camera.position);
+            const ahead = it.plane.position.z <= camera.position.z;
+            const range = ahead ? RANGE_DESKTOP_AHEAD : RANGE_DESKTOP_BEHIND;
+            if (dist > range) {
+              if (!it.video.paused) it.video.pause();
+            } else if (!it.oneShot) {
+              if (it.video.paused) {
+                const p = it.video.play();
+                if (p && p.catch) p.catch(() => {});
+              }
             }
           }
         }
@@ -329,13 +336,53 @@ function loadImageTexture(url) {
   });
 }
 
+/**
+ * Mobile picks ONE looping video at a time (the closest in range) instead of
+ * letting two run concurrently. The intro one-shot is left alone — if it's
+ * still on its first run, we let it finish even while a second screen
+ * approaches, otherwise the welcome message gets cut off.
+ */
+function updateMobileVideoSelection(items, camera) {
+  // Pause everything that's out of range first so we don't waste decoders on far screens.
+  const inRange = [];
+  for (const it of items) {
+    if (!it.video || it.oneShot) continue;
+    const dist = it.plane.position.distanceTo(camera.position);
+    const ahead = it.plane.position.z <= camera.position.z;
+    const range = ahead ? RANGE_MOBILE_AHEAD : RANGE_MOBILE_BEHIND;
+    if (dist > range) {
+      if (!it.video.paused) it.video.pause();
+    } else {
+      inRange.push({ it, dist });
+    }
+  }
+
+  // Pick the closest in-range video as the single one allowed to play.
+  let best = null;
+  for (const cand of inRange) {
+    if (!best || cand.dist < best.dist) best = cand;
+  }
+  for (const cand of inRange) {
+    const want = cand === best;
+    if (want && cand.it.video.paused) {
+      const p = cand.it.video.play();
+      if (p && p.catch) p.catch(() => {});
+    } else if (!want && !cand.it.video.paused) {
+      cand.it.video.pause();
+    }
+  }
+}
+
 function createVideoElement(src, { loop = true } = {}) {
   const v = document.createElement('video');
   v.src = src;
   v.muted = true;
   v.loop = loop;
   v.playsInline = true;
-  v.preload = 'auto';
+  // Mobile: don't eagerly download all 9 videos at boot — that competes with
+  // the in-flight decoders for memory and is the second-biggest source of
+  // stutter after concurrent decoding.
+  v.preload = mobileMode ? 'metadata' : 'auto';
   v.style.display = 'none';
   document.body.appendChild(v);
   return v;
