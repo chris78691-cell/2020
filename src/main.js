@@ -238,9 +238,11 @@ function startEndReveal() {
   endScene.start();
   // Swell main audio
   audioMgr.setMainTarget(0.85, 2.2, 'power2.out');
-  // Hide the tunnel UI (CA pill / hamburger / X link), show end overlay
+  // Keep the menu (hamburger + CA pill) accessible during the end reveal —
+  // the body.phase-end class hides only the skip button and bottom socials
+  // via CSS so they don't compete with the end CTAs.
+  document.body.classList.add('phase-end');
   gsap.delayedCall(0.4, () => {
-    ui.hide();
     endOverlay.classList.add('is-visible');
     endOverlay.setAttribute('aria-hidden', 'false');
   });

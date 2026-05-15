@@ -77,10 +77,10 @@ export function createEndScene({ scene, camera, endZ }) {
     depthWrite: false,
   });
 
-  // Logo aspect 2048/768 ≈ 2.667 — big plane (was 20×7.5)
-  const logo = new THREE.Mesh(new THREE.PlaneGeometry(34, 12.75), logoMat);
-  const logoBaseY = 4.4;
-  logo.position.set(0, logoBaseY, endZ - 24);
+  // Logo aspect 2048/768 ≈ 2.667 — large, dominant at the top of the view.
+  const logo = new THREE.Mesh(new THREE.PlaneGeometry(52, 19.5), logoMat);
+  const logoBaseY = 6.6;
+  logo.position.set(0, logoBaseY, endZ - 32);
   group.add(logo);
 
   // ----- Big man-image plane as the centerpiece at the end -----
@@ -88,8 +88,8 @@ export function createEndScene({ scene, camera, endZ }) {
     t.colorSpace = THREE.SRGBColorSpace;
     if (t.image && t.image.width && t.image.height) {
       const aspect = t.image.width / t.image.height;
-      // Resize the plane to match the loaded image aspect (height stays at ~14u)
-      const targetH = 14;
+      // Resize the plane to match the loaded image aspect (height = 22u)
+      const targetH = 22;
       const targetW = targetH * aspect;
       manPlane.geometry.dispose();
       manPlane.geometry = new THREE.PlaneGeometry(targetW, targetH);
@@ -102,9 +102,9 @@ export function createEndScene({ scene, camera, endZ }) {
     opacity: 0,
     side: THREE.FrontSide,
   });
-  const manPlane = new THREE.Mesh(new THREE.PlaneGeometry(14, 14), manMat);
-  // Behind the logo + coin, lower portion of view so logo "crowns" it
-  manPlane.position.set(0, -2.2, endZ - 30);
+  const manPlane = new THREE.Mesh(new THREE.PlaneGeometry(22, 22), manMat);
+  // Behind the logo and lower so the logo "crowns" the composition.
+  manPlane.position.set(0, -3.4, endZ - 38);
   group.add(manPlane);
 
   // ---- Coin ----
@@ -125,10 +125,11 @@ export function createEndScene({ scene, camera, endZ }) {
   const coinGeo = new THREE.CylinderGeometry(2.6, 2.6, 0.45, 80);
   const coin = new THREE.Mesh(coinGeo, [sideMat, faceMat, faceMat]);
 
-  // Pivot orients the coin so its caps face the camera; then we spin coin.rotation.y
+  // Pivot orients the coin so its caps face the camera; then we spin coin.rotation.y.
+  // Sits in front of the man image, lower so it doesn't obscure the face.
   const coinPivot = new THREE.Group();
-  const coinBaseY = -2.6;
-  coinPivot.position.set(0, coinBaseY, endZ - 15);
+  const coinBaseY = -5.5;
+  coinPivot.position.set(0, coinBaseY, endZ - 14);
   coinPivot.rotation.x = Math.PI / 2;
   coinPivot.scale.setScalar(0.001);
   coinPivot.visible = false;

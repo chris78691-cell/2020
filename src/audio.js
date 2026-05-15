@@ -40,14 +40,15 @@ const SCREEN_AUDIO = {
     duck: { target: 0.25, radius: 13 },
   },
 
-  // 5 = man image — voiceover buffer
+  // 5 = man image — voiceover buffer. Wide range so it ramps in well before
+  // the camera reaches the plane (no dead air after the previous screen ends).
   5: {
-    sources: [{ kind: 'audio', url: '/media/man-audio.mp3', volume: 1.0, loop: true }],
+    sources: [{ kind: 'audio', url: '/media/man-audio.mp3', volume: 1.0, loop: true, refDist: 14, maxDist: 26 }],
     duck: { target: 0.4, radius: 13 },
   },
 
   // 6 = ps5/skins/blackice — mood music
-  6: { sources: [{ kind: 'audio', url: '/media/mood.mp3', volume: 1.0, loop: true }] },
+  6: { sources: [{ kind: 'audio', url: '/media/mood.mp3', volume: 1.0, loop: true, refDist: 10, maxDist: 20 }] },
 
   // 7–12 = vibe videos. Tight pass-by audibility, silent before/after one screen.
   7:  { sources: [{ kind: 'video', baseGain: 1.0, refDist: 8, maxDist: 13 }] },
@@ -90,8 +91,8 @@ export function createAudioManager({ listener, mainAudio, screens, loader }) {
         });
       } else if (src.kind === 'audio') {
         const pa = new THREE.PositionalAudio(listener);
-        pa.setRefDistance(POS_DEFAULTS.refDistance);
-        pa.setMaxDistance(POS_DEFAULTS.maxDistance);
+        pa.setRefDistance(src.refDist ?? POS_DEFAULTS.refDistance);
+        pa.setMaxDistance(src.maxDist ?? POS_DEFAULTS.maxDistance);
         pa.setRolloffFactor(POS_DEFAULTS.rolloffFactor);
         pa.setDistanceModel(POS_DEFAULTS.distanceModel);
         pa.setVolume(src.volume ?? 1.0);
@@ -149,10 +150,11 @@ export function createAudioManager({ listener, mainAudio, screens, loader }) {
   }
 
   // Forward-bias: a screen the user is ABOUT to pass (plane is ahead, z more
-  // negative than camera) gets a wider audible range than one they've already
-  // gone by — they can see what's coming, but can't look back.
-  const FORWARD_RANGE_MULT = 1.35;
-  const BEHIND_RANGE_MULT  = 0.55;
+  // negative than camera) gets a much wider audible range than one they've
+  // already gone by. With these mults a screen ~30u ahead is already audible,
+  // while a screen ~6u behind is silent — matching the visual switch over.
+  const FORWARD_RANGE_MULT = 1.9;
+  const BEHIND_RANGE_MULT  = 0.4;
 
   function applyVideoVolume(vc) {
     if (muted) {

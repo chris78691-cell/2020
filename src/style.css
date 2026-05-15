@@ -865,57 +865,39 @@ body {
 
 .end-ca-btn {
   position: relative;
-  display: grid;
-  grid-template-columns: auto 1fr;
+  display: flex;
   align-items: center;
-  gap: 1rem;
+  justify-content: center;
   width: 100%;
-  padding: 1rem 1.4rem;
-  background: rgba(2, 8, 12, 0.85);
-  border: 1px solid rgba(0, 255, 208, 0.55);
-  border-radius: 10px;
+  padding: 0.9rem 1.2rem;
+  background: rgba(2, 8, 12, 0.7);
+  border: 1px solid rgba(0, 255, 208, 0.45);
+  border-radius: 999px;
   color: var(--fg);
   font-family: var(--mono);
   cursor: pointer;
-  text-align: left;
+  text-align: center;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   transition: border-color 0.2s, background 0.2s, transform 0.15s;
-  box-shadow: 0 0 40px rgba(0, 255, 208, 0.12);
 }
 
 .end-ca-btn:hover {
   border-color: var(--accent);
-  background: rgba(0, 18, 22, 0.92);
-  box-shadow: 0 0 60px rgba(0, 255, 208, 0.25);
+  background: rgba(0, 18, 22, 0.85);
 }
 
 .end-ca-btn:active { transform: translateY(1px); }
 
-.end-ca-btn__label {
-  font-size: 0.66rem;
-  letter-spacing: 0.4em;
-  color: var(--accent);
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
 .end-ca-btn__addr {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   letter-spacing: 0.04em;
   color: var(--fg);
   word-break: break-all;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.end-ca-btn__hint {
-  font-size: 0.65rem;
-  letter-spacing: 0.35em;
-  color: rgba(230, 247, 255, 0.55);
-  text-transform: uppercase;
-  white-space: nowrap;
+  max-width: 100%;
 }
 
 .end-ca-btn__copied {
@@ -1011,21 +993,15 @@ body {
   box-shadow: 0 0 35px rgba(95, 169, 204, 0.45);
 }
 
-.end-cta--x {
-  background: rgba(2, 8, 12, 0.85);
-  color: var(--fg);
-  border: 1px solid rgba(230, 247, 255, 0.3);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-}
-
-.end-cta--x:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-  letter-spacing: 0.36em;
-}
-
 .end-cta:active { transform: translateY(1px); }
+
+/* ---------- end-phase: keep CA pill + hamburger menu accessible, hide
+ *            the skip button and bottom social row so they don't compete
+ *            with the end-overlay CTAs. ---------- */
+body.phase-end .skip-btn,
+body.phase-end .social-row {
+  display: none;
+}
 
 /* ---------------- Entry screen touch hint (mobile-only) ---------------- */
 .entry__touch-hint {
@@ -1118,16 +1094,10 @@ body {
   .end-overlay { padding: 0 1rem 1.5rem; }
   .end-overlay__inner { width: 100%; gap: 0.7rem; }
   .end-ca-btn {
-    grid-template-columns: 1fr;
-    gap: 0.35rem;
-    padding: 0.8rem 1rem;
-  }
-  .end-ca-btn__label {
-    font-size: 0.6rem;
-    letter-spacing: 0.3em;
+    padding: 0.7rem 0.9rem;
   }
   .end-ca-btn__addr {
-    font-size: 0.72rem;
+    font-size: 0.62rem;
     white-space: normal;
     word-break: break-all;
     text-overflow: clip;
