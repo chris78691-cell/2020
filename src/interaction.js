@@ -1,17 +1,29 @@
 import * as THREE from 'three';
 import gsap from 'gsap';
+import { SCREEN_W, SCREEN_H } from './tunnel.js';
 
-const MAX_YAW = 20 * Math.PI / 180;
-const MAX_PITCH = 20 * Math.PI / 180;
-const LOOK_LERP_RATE = 5; // ~200ms half-life
+const IS_COARSE = typeof window !== 'undefined'
+  && (window.matchMedia?.('(pointer: coarse)')?.matches ?? false);
+const IS_MOBILE = typeof window !== 'undefined'
+  && (window.innerWidth < 720 || IS_COARSE);
+
+// Mobile gets a much wider look range — screens are at ±31° off-axis so the
+// desktop 20° cap meant the user could never actually face a passing screen.
+const MAX_YAW   = (IS_MOBILE ? 38 : 20) * Math.PI / 180;
+const MAX_PITCH = (IS_MOBILE ? 32 : 20) * Math.PI / 180;
+const LOOK_LERP_RATE = 5;
 
 const DIVE_DURATION = 0.8;
 const EXIT_DURATION = 0.6;
-const DIVE_DISTANCE = 3.2; // units in front of plane
 
-// Touch drag sensitivity — full-screen drag covers ~1.5× the max yaw/pitch (clamped)
-const TOUCH_DRAG_SENS = 1.5;
-const TAP_MAX_MOVE = 10; // px — drags below this still count as a tap
+// Mobile sensitivity: full-screen swipe = ~1× the new max yaw, so the
+// extra range doesn't feel sluggish.
+const TOUCH_DRAG_SENS = 1.2;
+const TAP_MAX_MOVE = 18;  // px — finger taps naturally drift more than mouse clicks
+const TAP_MAX_MS   = 500;
+
+// Suppress mouse events that fire synthetically right after a touchend.
+const TOUCH_SUPPRESS_MS = 450;
 
 const _tmpV1 = new THREE.Vector3();
 const _tmpV2 = new THREE.Vector3();
@@ -19,6 +31,23 @@ const _tmpQ1 = new THREE.Quaternion();
 const _tmpQ2 = new THREE.Quaternion();
 const _tmpObj = new THREE.Object3D();
 const _ndc = new THREE.Vector2();
+
+/**
+ * Compute the cover-fit dive distance so the plane fills the viewport
+ * regardless of aspect. On desktop landscape this is ~4.6u; on portrait
+ * mobile it's ~3.9u (and the plane is heavily cropped horizontally — but
+ * that's the point: cinematic fullscreen feel).
+ */
+function computeDiveDistance(camera, renderer) {
+  const fovRad = camera.fov * Math.PI / 180;
+  const aspect = renderer.domElement.clientWidth / renderer.domElement.clientHeight;
+  const hFov = 2 * Math.atan(Math.tan(fovRad / 2) * aspect);
+  const dForH = SCREEN_H / (2 * Math.tan(fovRad / 2));
+  const dForW = SCREEN_W / (2 * Math.tan(hFov / 2));
+  // Cover fit = use the SMALLER distance so the plane fills viewport
+  // (the longer dimension crops off the edges).
+  return Math.min(dForW, dForH) * 1.02;
+}
 
 export function createInteraction({ camera, renderer, planes, audioMgr, state, screens }) {
   camera.rotation.order = 'YXZ';
@@ -41,35 +70,35 @@ export function createInteraction({ camera, renderer, planes, audioMgr, state, s
   let dragYaw = 0;
   let dragPitch = 0;
   let touchActive = false;
-  let touchStartX = 0;
-  let touchStartY = 0;
   let touchLastX = 0;
   let touchLastY = 0;
   let touchMovedPx = 0;
   let touchStartTime = 0;
+  let lastTouchEndAt = 0; // for synthetic-click suppression
 
-  // Mouse handlers (desktop)
   canvas.addEventListener('mousemove', onMouseMove);
   canvas.addEventListener('click', onMouseClick);
 
-  // Touch handlers (mobile)
   canvas.addEventListener('touchstart', onTouchStart, { passive: false });
   canvas.addEventListener('touchmove', onTouchMove, { passive: false });
-  canvas.addEventListener('touchend', onTouchEnd);
+  canvas.addEventListener('touchend', onTouchEnd, { passive: false });
   canvas.addEventListener('touchcancel', onTouchEnd);
 
   window.addEventListener('keydown', onKeyDown);
 
   function onMouseMove(e) {
+    // Don't fight touch drag on hybrid devices
+    if (performance.now() - lastTouchEndAt < TOUCH_SUPPRESS_MS) return;
     const rect = canvas.getBoundingClientRect();
     mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     mouse.y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
     targetYaw.v = -mouse.x * MAX_YAW;
-    // mouse.y is +1 at top, -1 at bottom. With YXZ Euler, +rotation.x = look up.
     targetPitch.v = mouse.y * MAX_PITCH;
   }
 
   function onMouseClick(e) {
+    // Synthetic click after touchend — drop it; touchend already handled the tap.
+    if (performance.now() - lastTouchEndAt < TOUCH_SUPPRESS_MS) return;
     handleTap(e.clientX, e.clientY);
   }
 
@@ -77,16 +106,15 @@ export function createInteraction({ camera, renderer, planes, audioMgr, state, s
     if (e.touches.length !== 1) return;
     const t = e.touches[0];
     touchActive = true;
-    touchStartX = touchLastX = t.clientX;
-    touchStartY = touchLastY = t.clientY;
+    touchLastX = t.clientX;
+    touchLastY = t.clientY;
     touchMovedPx = 0;
     touchStartTime = performance.now();
-    // Don't preventDefault on start — lets quick taps through cleanly
   }
 
   function onTouchMove(e) {
     if (!touchActive || e.touches.length !== 1) return;
-    e.preventDefault(); // block page scroll while panning the camera
+    e.preventDefault();
     const t = e.touches[0];
     const dx = t.clientX - touchLastX;
     const dy = t.clientY - touchLastY;
@@ -98,12 +126,10 @@ export function createInteraction({ camera, renderer, planes, audioMgr, state, s
     if (mode !== 'idle') return;
 
     const rect = canvas.getBoundingClientRect();
-    // Drag right (dx > 0) → user wants to look right → yaw must go negative (see onMouseMove)
-    dragYaw -= (dx / rect.width) * MAX_YAW * 2 * TOUCH_DRAG_SENS;
-    // Drag down (dy > 0) → user wants to look down → pitch must go negative
+    dragYaw   -= (dx / rect.width) * MAX_YAW * 2 * TOUCH_DRAG_SENS;
     dragPitch -= (dy / rect.height) * MAX_PITCH * 2 * TOUCH_DRAG_SENS;
 
-    dragYaw = Math.max(-MAX_YAW, Math.min(MAX_YAW, dragYaw));
+    dragYaw   = Math.max(-MAX_YAW,   Math.min(MAX_YAW,   dragYaw));
     dragPitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, dragPitch));
 
     targetYaw.v = dragYaw;
@@ -113,10 +139,11 @@ export function createInteraction({ camera, renderer, planes, audioMgr, state, s
   function onTouchEnd(e) {
     if (!touchActive) return;
     touchActive = false;
-    const dt = performance.now() - touchStartTime;
-    // Treat very short, low-movement touches as taps.
-    if (touchMovedPx <= TAP_MAX_MOVE && dt < 500) {
-      // Use the last-known touch position as the tap point.
+    lastTouchEndAt = performance.now();
+    const dt = lastTouchEndAt - touchStartTime;
+    if (touchMovedPx <= TAP_MAX_MOVE && dt < TAP_MAX_MS) {
+      // Block the synthetic click that would otherwise fire on this touch.
+      if (e.cancelable) e.preventDefault();
       handleTap(touchLastX, touchLastY);
     }
   }
@@ -129,7 +156,6 @@ export function createInteraction({ camera, renderer, planes, audioMgr, state, s
     }
     if (mode === 'exiting') return;
 
-    // Raycast from the tap position regardless of where the camera was looking.
     const rect = canvas.getBoundingClientRect();
     _ndc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
     _ndc.y = -(((clientY - rect.top) / rect.height) * 2 - 1);
@@ -155,9 +181,18 @@ export function createInteraction({ camera, renderer, planes, audioMgr, state, s
     };
     state.autoScroll = false;
 
+    // Reset drag state so when we exit the dive, the camera lerps back to
+    // straight-forward instead of returning to whatever side-angle the user
+    // happened to be drag-looking at when they tapped.
+    dragYaw = 0;
+    dragPitch = 0;
+    targetYaw.v = 0;
+    targetPitch.v = 0;
+
     plane.getWorldPosition(_tmpV1);
     plane.getWorldDirection(_tmpV2);
-    _tmpV2.multiplyScalar(DIVE_DISTANCE);
+    const dist = computeDiveDistance(camera, renderer);
+    _tmpV2.multiplyScalar(dist);
     const targetX = _tmpV1.x + _tmpV2.x;
     const targetY = _tmpV1.y + _tmpV2.y;
     const targetZ = _tmpV1.z + _tmpV2.z;
@@ -235,7 +270,6 @@ export function createInteraction({ camera, renderer, planes, audioMgr, state, s
       currentPitch = THREE.MathUtils.damp(currentPitch, targetPitch.v, LOOK_LERP_RATE, dt);
       camera.rotation.set(currentPitch, currentYaw, 0);
 
-      // Hover raycast — only meaningful when a mouse is present (no hover on touch).
       raycaster.setFromCamera(mouse, camera);
       const hits = raycaster.intersectObjects(planes, false);
       const newHover = hits.length > 0 ? hits[0].object : null;

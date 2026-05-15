@@ -93,20 +93,23 @@ const screenFragment = /* glsl */ `
   }
 `;
 
-// Tight range on phones — at most 1–2 videos decode at once instead of 4–5.
-// Recomputed on resize/orientation change so swapping between phone-like and
-// desktop-like viewports picks up the right value.
-const VIDEO_PLAY_RANGE_DESKTOP = 40;
-const VIDEO_PLAY_RANGE_MOBILE = 22;
-function computeVideoPlayRange() {
-  if (typeof window === 'undefined') return VIDEO_PLAY_RANGE_DESKTOP;
+// Per-direction range so we can match the forward-bias audio: the user can't
+// look backwards, so a screen they've passed should pause much sooner than
+// one they're approaching. Re-evaluated on viewport change.
+const RANGE_DESKTOP_AHEAD  = 40;
+const RANGE_DESKTOP_BEHIND = 40;
+const RANGE_MOBILE_AHEAD   = 22;
+const RANGE_MOBILE_BEHIND  = 10; // planes are 8u off-axis, so 10u catches "just passed" then pauses
+
+function isMobileNow() {
+  if (typeof window === 'undefined') return false;
   const coarse = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
-  return (window.innerWidth < 720 || coarse) ? VIDEO_PLAY_RANGE_MOBILE : VIDEO_PLAY_RANGE_DESKTOP;
+  return window.innerWidth < 720 || coarse;
 }
-let VIDEO_PLAY_RANGE = computeVideoPlayRange();
+let mobileMode = isMobileNow();
 if (typeof window !== 'undefined') {
-  window.addEventListener('resize', () => { VIDEO_PLAY_RANGE = computeVideoPlayRange(); });
-  window.addEventListener('orientationchange', () => { VIDEO_PLAY_RANGE = computeVideoPlayRange(); });
+  window.addEventListener('resize', () => { mobileMode = isMobileNow(); });
+  window.addEventListener('orientationchange', () => { mobileMode = isMobileNow(); });
 }
 
 export function attachMedia(planes, loader) {
@@ -266,12 +269,17 @@ export function attachMedia(planes, loader) {
           }
         }
 
-        // Perf: only play videos within VIDEO_PLAY_RANGE of camera.
-        // One-shots are explicitly started/replayed elsewhere — never auto-resume them,
-        // otherwise the range check would restart them every time the user comes near.
+        // Perf: only play videos that are close enough AND in the right direction.
+        // Forward = -Z; "ahead" means plane.z <= camera.z. Behind-camera videos
+        // pause aggressively on mobile because the user can't look back.
+        // One-shots are explicitly started/replayed elsewhere — never auto-resume them.
         if (it.video && camera) {
           const dist = it.plane.position.distanceTo(camera.position);
-          if (dist > VIDEO_PLAY_RANGE) {
+          const ahead = it.plane.position.z <= camera.position.z;
+          const range = mobileMode
+            ? (ahead ? RANGE_MOBILE_AHEAD  : RANGE_MOBILE_BEHIND)
+            : (ahead ? RANGE_DESKTOP_AHEAD : RANGE_DESKTOP_BEHIND);
+          if (dist > range) {
             if (!it.video.paused) it.video.pause();
           } else if (!it.oneShot) {
             if (it.video.paused) {

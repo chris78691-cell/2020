@@ -317,12 +317,12 @@ function tick() {
     interaction.update(dt);
     audioMgr.update(camera);
 
-    // Minecart follows the camera (XZ) only when not diving — so the cart
-    // stays on the track if the user dives into a side screen.
-    // Camera sits high in the cart so the rim is well below sightline,
-    // leaving the track ahead and the screens visible.
+    // Minecart: X is locked to the track centreline always (so it never
+    // drifts off-track when the user dives into a side screen). Z+Y follow
+    // the camera, but only in idle mode so the cart doesn't fly off with
+    // the camera during a dive.
+    minecart.group.position.x = 0;
     if (interaction.getMode() === 'idle') {
-      minecart.group.position.x = camera.position.x;
       minecart.group.position.y = camera.position.y - 1.05 + Math.sin(t * 12) * 0.012;
       minecart.group.position.z = camera.position.z - 0.55;
     }
