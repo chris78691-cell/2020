@@ -77,8 +77,9 @@ export function createAudioManager({ listener, mainAudio, screens, loader }) {
 
     for (const src of cfg.sources || []) {
       if (src.kind === 'video' && item.video) {
-        // Direct HTML media element: unmute and let `update()` drive volume from distance.
-        item.video.muted = false;
+        // Direct HTML media element. Stay muted at HTML level until the user
+        // gesture fires (iOS Safari will reject unmuted autoplay otherwise).
+        // `update()` will drive volume once we unmute in onUserGesture().
         item.video.volume = 0;
         videoControls.push({
           video: item.video,
@@ -187,6 +188,10 @@ export function createAudioManager({ listener, mainAudio, screens, loader }) {
       gestureFired = true;
       const ctx = listener.context;
       if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+      // Unmute video elements now that we have a real user gesture.
+      for (const vc of videoControls) {
+        try { vc.video.muted = false; } catch (e) { /* ignore */ }
+      }
       for (const e of positionals) {
         if (e.src.kind === 'audio' && e.ready && !e.audio.isPlaying) {
           try { e.audio.play(); } catch (err) { /* ignore */ }

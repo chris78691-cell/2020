@@ -21,9 +21,27 @@ const entryEl = document.getElementById('entry');
 const enterBtn = document.getElementById('enter-btn');
 const portalOverlay = document.getElementById('portal-overlay');
 
+// Touch / portrait detection — coarse pointers + narrow viewports get mobile treatment.
+const isCoarsePointer = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
+const isMobileViewport = () => window.innerWidth < 720 || isCoarsePointer;
+
+// Bump pixel ratio on phones — they have high-DPI screens and crisp text matters more
+// than the slight extra GPU cost; desktop stays capped at 1.5 to keep the post chain cheap.
+function getTargetPixelRatio() {
+  const dpr = window.devicePixelRatio || 1;
+  return Math.min(dpr, isMobileViewport() ? 2.0 : 1.5);
+}
+
+// Wider vertical FOV on portrait viewports so the tunnel doesn't feel cramped
+// when the horizontal aspect is narrow.
+function getTargetFov() {
+  const aspect = window.innerWidth / window.innerHeight;
+  return aspect < 1 ? 88 : (aspect < 1.4 ? 80 : 75);
+}
+
 // ---------------- Renderer ----------------
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+renderer.setPixelRatio(getTargetPixelRatio());
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x000000, 1);
 
@@ -32,7 +50,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
 scene.fog = new THREE.FogExp2(0x000000, 0.045);
 
-const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+const camera = new THREE.PerspectiveCamera(getTargetFov(), window.innerWidth / window.innerHeight, 0.1, 1000);
 camera.position.set(0, 0, 0);
 
 // ---------------- Audio listener ----------------
@@ -124,7 +142,7 @@ const ChromaticAberrationShader = {
 };
 
 const composer = new EffectComposer(renderer);
-composer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+composer.setPixelRatio(getTargetPixelRatio());
 composer.setSize(window.innerWidth, window.innerHeight);
 composer.addPass(new RenderPass(scene, camera));
 
@@ -144,14 +162,24 @@ composer.addPass(new OutputPass());
 const fx = { chromaPass, filmPass, glitchPass, composer };
 
 // ---------------- Resize ----------------
-window.addEventListener('resize', () => {
+function handleResize() {
   const w = window.innerWidth;
   const h = window.innerHeight;
+  const pr = getTargetPixelRatio();
+  renderer.setPixelRatio(pr);
   renderer.setSize(w, h);
+  composer.setPixelRatio(pr);
   composer.setSize(w, h);
   camera.aspect = w / h;
+  // Only retarget FOV on resize if we aren't mid-portal-animation (which is
+  // tweening fov itself); checking phase keeps the portal kick clean.
+  if (state?.phase !== 'portal') {
+    camera.fov = getTargetFov();
+  }
   camera.updateProjectionMatrix();
-});
+}
+window.addEventListener('resize', handleResize);
+window.addEventListener('orientationchange', () => setTimeout(handleResize, 200));
 
 // ---------------- Render loop ----------------
 const clock = new THREE.Clock();
@@ -331,7 +359,7 @@ enterBtn.addEventListener('click', () => {
   screens.playAllVideos();
 
   // Run the portal animation
-  runPortal({ camera, portalRig, fx, overlay: portalOverlay }).then(() => {
+  runPortal({ camera, portalRig, fx, overlay: portalOverlay, settleFov: getTargetFov() }).then(() => {
     state.phase = 'tunnel';
     portalOverlay.classList.remove('is-active');
 

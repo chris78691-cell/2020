@@ -121,7 +121,7 @@ export function createPortalRig() {
 /**
  * Run the portal "ENTER" animation. Returns a Promise resolved when the trip ends.
  */
-export function runPortal({ camera, portalRig, fx, overlay }) {
+export function runPortal({ camera, portalRig, fx, overlay, settleFov = 75 }) {
   return new Promise((resolve) => {
     const tl = gsap.timeline({ onComplete: resolve });
 
@@ -158,7 +158,7 @@ export function runPortal({ camera, portalRig, fx, overlay }) {
 
     // Camera settles for tunnel phase: reset roll, fov, and bring position to a comfortable spot
     tl.to(camera.rotation, { z: 0, duration: 0.6, ease: 'power2.out' }, 2.5);
-    tl.to(camera, { fov: 75, duration: 0.6, ease: 'power2.out', onUpdate: () => camera.updateProjectionMatrix() }, 2.5);
+    tl.to(camera, { fov: settleFov, duration: 0.6, ease: 'power2.out', onUpdate: () => camera.updateProjectionMatrix() }, 2.5);
     tl.to(camera.position, { z: 0, duration: 0.01 }, 2.5);
 
     // Ease portal speed back down (tunnel will take over)
