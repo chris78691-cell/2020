@@ -9,11 +9,16 @@ const DIVE_DURATION = 0.8;
 const EXIT_DURATION = 0.6;
 const DIVE_DISTANCE = 3.2; // units in front of plane
 
+// Touch drag sensitivity — full-screen drag covers ~1.5× the max yaw/pitch (clamped)
+const TOUCH_DRAG_SENS = 1.5;
+const TAP_MAX_MOVE = 10; // px — drags below this still count as a tap
+
 const _tmpV1 = new THREE.Vector3();
 const _tmpV2 = new THREE.Vector3();
 const _tmpQ1 = new THREE.Quaternion();
 const _tmpQ2 = new THREE.Quaternion();
 const _tmpObj = new THREE.Object3D();
+const _ndc = new THREE.Vector2();
 
 export function createInteraction({ camera, renderer, planes, audioMgr, state, screens }) {
   camera.rotation.order = 'YXZ';
@@ -32,8 +37,27 @@ export function createInteraction({ camera, renderer, planes, audioMgr, state, s
   let mode = 'idle';
   let dived = null;
 
+  // Touch drag state — cumulative yaw/pitch the user has dragged into.
+  let dragYaw = 0;
+  let dragPitch = 0;
+  let touchActive = false;
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let touchLastX = 0;
+  let touchLastY = 0;
+  let touchMovedPx = 0;
+  let touchStartTime = 0;
+
+  // Mouse handlers (desktop)
   canvas.addEventListener('mousemove', onMouseMove);
-  canvas.addEventListener('click', onClick);
+  canvas.addEventListener('click', onMouseClick);
+
+  // Touch handlers (mobile)
+  canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+  canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+  canvas.addEventListener('touchend', onTouchEnd);
+  canvas.addEventListener('touchcancel', onTouchEnd);
+
   window.addEventListener('keydown', onKeyDown);
 
   function onMouseMove(e) {
@@ -42,21 +66,76 @@ export function createInteraction({ camera, renderer, planes, audioMgr, state, s
     mouse.y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
     targetYaw.v = -mouse.x * MAX_YAW;
     // mouse.y is +1 at top, -1 at bottom. With YXZ Euler, +rotation.x = look up.
-    // So cursor up → mouse.y > 0 → targetPitch > 0 → camera looks up.
     targetPitch.v = mouse.y * MAX_PITCH;
   }
 
-  function onClick() {
+  function onMouseClick(e) {
+    handleTap(e.clientX, e.clientY);
+  }
+
+  function onTouchStart(e) {
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0];
+    touchActive = true;
+    touchStartX = touchLastX = t.clientX;
+    touchStartY = touchLastY = t.clientY;
+    touchMovedPx = 0;
+    touchStartTime = performance.now();
+    // Don't preventDefault on start — lets quick taps through cleanly
+  }
+
+  function onTouchMove(e) {
+    if (!touchActive || e.touches.length !== 1) return;
+    e.preventDefault(); // block page scroll while panning the camera
+    const t = e.touches[0];
+    const dx = t.clientX - touchLastX;
+    const dy = t.clientY - touchLastY;
+    touchLastX = t.clientX;
+    touchLastY = t.clientY;
+
+    touchMovedPx += Math.abs(dx) + Math.abs(dy);
+
+    if (mode !== 'idle') return;
+
+    const rect = canvas.getBoundingClientRect();
+    // Drag right (dx > 0) → user wants to look right → yaw must go negative (see onMouseMove)
+    dragYaw -= (dx / rect.width) * MAX_YAW * 2 * TOUCH_DRAG_SENS;
+    // Drag down (dy > 0) → user wants to look down → pitch must go negative
+    dragPitch -= (dy / rect.height) * MAX_PITCH * 2 * TOUCH_DRAG_SENS;
+
+    dragYaw = Math.max(-MAX_YAW, Math.min(MAX_YAW, dragYaw));
+    dragPitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, dragPitch));
+
+    targetYaw.v = dragYaw;
+    targetPitch.v = dragPitch;
+  }
+
+  function onTouchEnd(e) {
+    if (!touchActive) return;
+    touchActive = false;
+    const dt = performance.now() - touchStartTime;
+    // Treat very short, low-movement touches as taps.
+    if (touchMovedPx <= TAP_MAX_MOVE && dt < 500) {
+      // Use the last-known touch position as the tap point.
+      handleTap(touchLastX, touchLastY);
+    }
+  }
+
+  function handleTap(clientX, clientY) {
     if (state.phase !== 'tunnel') return;
     if (mode === 'diving' || mode === 'entering') {
-      // Click during dive (anywhere) returns to tunnel
       exitDive();
       return;
     }
     if (mode === 'exiting') return;
-    if (hovered) {
-      enterDive(hovered);
-    }
+
+    // Raycast from the tap position regardless of where the camera was looking.
+    const rect = canvas.getBoundingClientRect();
+    _ndc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    _ndc.y = -(((clientY - rect.top) / rect.height) * 2 - 1);
+    raycaster.setFromCamera(_ndc, camera);
+    const hits = raycaster.intersectObjects(planes, false);
+    if (hits.length > 0) enterDive(hits[0].object);
   }
 
   function onKeyDown(e) {
@@ -76,7 +155,6 @@ export function createInteraction({ camera, renderer, planes, audioMgr, state, s
     };
     state.autoScroll = false;
 
-    // Target = plane world pos + plane forward * DIVE_DISTANCE
     plane.getWorldPosition(_tmpV1);
     plane.getWorldDirection(_tmpV2);
     _tmpV2.multiplyScalar(DIVE_DISTANCE);
@@ -95,13 +173,9 @@ export function createInteraction({ camera, renderer, planes, audioMgr, state, s
       },
     });
 
-    // Glow up the dived plane
     setHoverFloat(plane, 1, 0.35);
-
-    // Audio
     audioMgr.setDive?.(plane);
 
-    // If the user is diving into a one-shot (e.g. the intro), replay it.
     const planeIdx = plane.userData?.index;
     if (planeIdx != null) screens?.replayOneShot?.(planeIdx);
   }
@@ -113,10 +187,8 @@ export function createInteraction({ camera, renderer, planes, audioMgr, state, s
     const savedCamPos = dived.savedCamPos;
     const savedAutoScroll = dived.savedAutoScroll;
 
-    // Capture current quaternion
     _tmpQ1.copy(camera.quaternion);
 
-    // Compute target quaternion (mouse-look look-forward at saved position)
     _tmpObj.position.copy(savedCamPos);
     _tmpObj.rotation.order = 'YXZ';
     _tmpObj.rotation.set(currentPitch, currentYaw, 0);
@@ -159,12 +231,11 @@ export function createInteraction({ camera, renderer, planes, audioMgr, state, s
     if (state.phase !== 'tunnel') return;
 
     if (mode === 'idle') {
-      // Smooth lerp toward mouse target
       currentYaw = THREE.MathUtils.damp(currentYaw, targetYaw.v, LOOK_LERP_RATE, dt);
       currentPitch = THREE.MathUtils.damp(currentPitch, targetPitch.v, LOOK_LERP_RATE, dt);
       camera.rotation.set(currentPitch, currentYaw, 0);
 
-      // Hover raycast
+      // Hover raycast — only meaningful when a mouse is present (no hover on touch).
       raycaster.setFromCamera(mouse, camera);
       const hits = raycaster.intersectObjects(planes, false);
       const newHover = hits.length > 0 ? hits[0].object : null;
@@ -175,13 +246,11 @@ export function createInteraction({ camera, renderer, planes, audioMgr, state, s
         canvas.style.cursor = hovered ? 'pointer' : 'default';
       }
     } else if (mode === 'entering' || mode === 'diving') {
-      // Keep aimed at the dived plane
       if (dived) {
         dived.plane.getWorldPosition(_tmpV1);
         camera.lookAt(_tmpV1);
       }
     }
-    // 'exiting' is fully driven by GSAP slerp
   }
 
   return {

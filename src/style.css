@@ -25,6 +25,11 @@ body {
   overflow: hidden;
   cursor: default;
   user-select: none;
+  /* Prevent iOS pinch-zoom + double-tap-zoom inside the immersive scene */
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
 }
 
 #scene {
@@ -1021,3 +1026,130 @@ body {
 }
 
 .end-cta:active { transform: translateY(1px); }
+
+/* ---------------- Entry screen touch hint (mobile-only) ---------------- */
+.entry__touch-hint {
+  margin: 0.4rem 0 0;
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: rgba(0, 255, 208, 0.7);
+  text-align: center;
+  display: none;
+}
+.entry__dot { color: var(--fg); margin: 0 0.4em; opacity: 0.5; }
+
+/* Show the touch hint only on coarse pointers (phones / tablets) */
+@media (pointer: coarse) {
+  .entry__touch-hint { display: block; }
+}
+
+/* ===================================================================
+   MOBILE / NARROW-VIEWPORT RESPONSIVE RULES
+   =================================================================== */
+@media (max-width: 720px) {
+
+  /* Entry: smaller hero text + button so they fit a phone */
+  .entry { gap: 2rem; padding: 1rem; }
+  .entry__title { font-size: clamp(5.5rem, 26vw, 9rem); }
+  .entry__btn {
+    font-size: 0.82rem;
+    letter-spacing: 0.32em;
+    padding: 0.85rem 1.9rem;
+  }
+
+  /* CA pill: drop to a second row so it never collides with the skip/menu buttons */
+  .ca-pill {
+    top: 64px;
+    font-size: 0.62rem;
+    letter-spacing: 0.04em;
+    padding: 0.45rem 0.75rem;
+    max-width: calc(100vw - 24px);
+  }
+  .ca-pill__dot { margin: 0 0.25em; }
+
+  /* Skip + hamburger: smaller hit-friendly squares */
+  .skip-btn {
+    top: 12px; left: 12px;
+    font-size: 0.6rem;
+    letter-spacing: 0.3em;
+    padding: 0.45rem 0.65rem;
+  }
+  .skip-btn__arrow { display: none; }
+  .menu-btn {
+    top: 10px; right: 12px;
+    width: 40px; height: 40px;
+  }
+
+  /* Social row: stack horizontally but switch pills to icon-only to save room */
+  .social-row {
+    bottom: 16px;
+    gap: 0.45rem;
+    width: calc(100vw - 24px);
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .social-pill {
+    padding: 0.5rem 0.7rem;
+    font-size: 0.66rem;
+    letter-spacing: 0.1em;
+    gap: 0.35rem;
+  }
+  .social-pill__label {
+    /* Keep labels but tighten them */
+    font-size: 0.66rem;
+  }
+
+  /* Side panel: full width on mobile so all content is reachable */
+  .side-panel__sheet {
+    width: 100vw;
+    padding: 4rem 1.25rem 1.5rem;
+    font-size: 0.82rem;
+  }
+  .panel__brand-glitch { font-size: 2.6rem; }
+  .panel-ca {
+    font-size: 0.66rem;
+    padding: 0.55rem 0.7rem;
+    word-break: break-all;
+  }
+
+  /* End overlay: stack CTAs vertically so they don't squash */
+  .end-overlay { padding: 0 1rem 1.5rem; }
+  .end-overlay__inner { width: 100%; gap: 0.7rem; }
+  .end-ca-btn {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+    padding: 0.8rem 1rem;
+  }
+  .end-ca-btn__label {
+    font-size: 0.6rem;
+    letter-spacing: 0.3em;
+  }
+  .end-ca-btn__addr {
+    font-size: 0.72rem;
+    white-space: normal;
+    word-break: break-all;
+    text-overflow: clip;
+  }
+  .end-ctas {
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+  .end-cta {
+    padding: 0.85rem 1rem;
+    font-size: 0.74rem;
+    letter-spacing: 0.24em;
+  }
+  .end-cta:hover { letter-spacing: 0.28em; }
+
+  /* Loader: shrink hero text so it doesn't overflow */
+  .loader__title { font-size: clamp(3.5rem, 18vw, 6rem); }
+}
+
+/* Very narrow phones (iPhone SE / Galaxy S etc.) — compact even further */
+@media (max-width: 380px) {
+  .ca-pill { font-size: 0.55rem; max-width: calc(100vw - 96px); }
+  .social-pill__label { display: none; }
+  .social-pill { padding: 0.55rem; gap: 0; }
+}
