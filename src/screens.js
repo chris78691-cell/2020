@@ -93,7 +93,21 @@ const screenFragment = /* glsl */ `
   }
 `;
 
-const VIDEO_PLAY_RANGE = 40;
+// Tight range on phones — at most 1–2 videos decode at once instead of 4–5.
+// Recomputed on resize/orientation change so swapping between phone-like and
+// desktop-like viewports picks up the right value.
+const VIDEO_PLAY_RANGE_DESKTOP = 40;
+const VIDEO_PLAY_RANGE_MOBILE = 22;
+function computeVideoPlayRange() {
+  if (typeof window === 'undefined') return VIDEO_PLAY_RANGE_DESKTOP;
+  const coarse = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
+  return (window.innerWidth < 720 || coarse) ? VIDEO_PLAY_RANGE_MOBILE : VIDEO_PLAY_RANGE_DESKTOP;
+}
+let VIDEO_PLAY_RANGE = computeVideoPlayRange();
+if (typeof window !== 'undefined') {
+  window.addEventListener('resize', () => { VIDEO_PLAY_RANGE = computeVideoPlayRange(); });
+  window.addEventListener('orientationchange', () => { VIDEO_PLAY_RANGE = computeVideoPlayRange(); });
+}
 
 export function attachMedia(planes, loader) {
   const items = [];
