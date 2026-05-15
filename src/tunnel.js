@@ -9,8 +9,9 @@ export const SCREEN_H = 6.75; // 16:9 aspect
 export const SCREEN_X = 8; // off-center on each side
 export const SCREEN_ROT = Math.PI * 0.17; // ~31° toward center
 export const FIRST_SCREEN_Z = -12; // screen 1 visible immediately from spawn
-export const TUNNEL_END_Z = FIRST_SCREEN_Z - (SCREEN_COUNT - 1) * SCREEN_SPACING - 12;
-// = -12 - 11*11 - 12 = -145
+export const TUNNEL_END_Z = FIRST_SCREEN_Z - (SCREEN_COUNT - 1) * SCREEN_SPACING - 5;
+// = -12 - 11*11 - 5 = -138 — track ends ~5u past screen 12 so the end reveal
+// kicks in shortly after the last screen instead of a long empty stretch.
 
 export function createTunnel() {
   const group = new THREE.Group();

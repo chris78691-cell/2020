@@ -337,30 +337,54 @@ function loadImageTexture(url) {
 }
 
 /**
- * Mobile picks ONE looping video at a time (the closest in range) instead of
- * letting two run concurrently. The intro one-shot is left alone — if it's
- * still on its first run, we let it finish even while a second screen
- * approaches, otherwise the welcome message gets cut off.
+ * Mobile picks ONE looping video at a time. To make the switch happen earlier
+ * — so the upcoming screen is already playing as you approach it — we weight
+ * the candidate distance by direction:
+ *
+ *   weighted = dist                    (ahead)
+ *   weighted = dist * BEHIND_WEIGHT    (behind: penalised so it loses sooner)
+ *
+ * With BEHIND_WEIGHT = 3.0, a screen 5u behind weighs the same as one 15u
+ * ahead — so the switch from "just passed" to "next up" happens roughly at
+ * the halfway point between two screens instead of at the very end of the
+ * behind-range.
+ *
+ * Effective ranges from RANGE_MAX = 30:
+ *   ahead   visible:  0 –  30 u
+ *   behind  visible:  0 –  10 u
+ *
+ * The intro one-shot is exempt — it finishes its first run on its own.
  */
+const BEHIND_WEIGHT = 3.0;
+const RANGE_MAX_MOBILE = 30;
+
 function updateMobileVideoSelection(items, camera) {
-  // Pause everything that's out of range first so we don't waste decoders on far screens.
+  // While the intro one-shot is still on its first run, hold all looping
+  // videos paused so we don't have two decoders fighting at the start.
+  const intro = items.find((it) => it.oneShot);
+  if (intro?.video && !intro.video.paused && !intro.played) {
+    for (const it of items) {
+      if (!it.video || it.oneShot) continue;
+      if (!it.video.paused) it.video.pause();
+    }
+    return;
+  }
+
   const inRange = [];
   for (const it of items) {
     if (!it.video || it.oneShot) continue;
     const dist = it.plane.position.distanceTo(camera.position);
     const ahead = it.plane.position.z <= camera.position.z;
-    const range = ahead ? RANGE_MOBILE_AHEAD : RANGE_MOBILE_BEHIND;
-    if (dist > range) {
+    const weighted = dist * (ahead ? 1.0 : BEHIND_WEIGHT);
+    if (weighted > RANGE_MAX_MOBILE) {
       if (!it.video.paused) it.video.pause();
     } else {
-      inRange.push({ it, dist });
+      inRange.push({ it, weighted });
     }
   }
-
-  // Pick the closest in-range video as the single one allowed to play.
   let best = null;
   for (const cand of inRange) {
-    if (!best || cand.dist < best.dist) best = cand;
+    if (!best || cand.weighted < best.weighted) best = cand;
   }
   for (const cand of inRange) {
     const want = cand === best;
